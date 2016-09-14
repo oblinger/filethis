@@ -1,0 +1,122 @@
+#!/usr/bin/env python
+# Dan Oblinger <code@oblinger.us>
+
+
+# FILE_THIS MONITORING SCRIPT
+#
+#
+# OBJECTIVE:
+#   Allow a user to rapidly see ONLY NEW documents from FileThis.  
+#   Allows user to "remember" documents that are questionable until satisfied.
+#
+#
+# FUNCTION:
+#   (1) Script runs w/o arguments.  It check for newly downloaded files from http://filethis.com
+#   (2) It will COPY them to a VIEW_FOLDER and it will open a viewer app on each file
+#   (3) The user can view each new file, and delete them from the VIEW_FOLDER once they have viewed each.
+#
+# 
+# USAGE:
+#   (1) Edit the WATCH_FOLDER below in order to point your local FileThis folder
+#   (2) Run this script from time to time in order to review new documents
+# 
+
+
+import os
+import json
+import shutil 
+import datetime
+import fnmatch
+
+HOME        = os.getenv("HOME")
+PVARS_FILE  = os.path.join(HOME, '.filethis_index.json')
+ROOT        = os.path.join(HOME, 'Google Drive/Apps/FileThis')
+VIEW_FOLDER = os.path.join(HOME, '.filethis_viewfolder')
+first_time  = False
+
+
+def main():
+    setup()
+    pass
+    print "yo %s %s " % (HOME, VIEW_FOLDER)
+    pass
+    copy_new_files(VIEW_FOLDER)
+    os.system('open %r' % VIEW_FOLDER)
+    if not first_time:
+        open_all_pdfs(VIEW_FOLDER)
+
+
+def setup():
+    global first_time
+    if not os.path.exists(PVARS_FILE):
+        print "### Welcome to FileThis monitoring."
+        print "### No files will be opened on this first check since many will be 'new'."
+        first_time = True
+    if not os.path.exists(VIEW_FOLDER):
+        os.makedirs(VIEW_FOLDER)
+
+
+def copy_new_files(folder):
+    count = 0
+    now = datetime.datetime.now().strftime("%Y.%m.%d")
+    for f in find_files(ROOT):
+        n = os.path.basename(f)
+        v = pvar(f, file=PVARS_FILE)
+        dst = os.path.join(folder, n)
+        if not v:
+            print "Copying %r" % n
+            shutil.copyfile(f, dst)
+            pvar(f, file=PVARS_FILE, set=now)
+            count += 1
+    print "\n### Copied %r new documents" % count
+
+
+def open_all_pdfs(folder):
+    for child in os.listdir(folder):
+        f = os.path.join(folder, child)
+        if not os.path.isdir(f):
+            os.system("open %r" % f)
+
+
+def pvar(name=None, **kwargs):
+    """Gets or sets a persistent var.  Keys:
+        'set'   -- Sets pvar's value to the provided value.
+        'file'  -- Uses pvars found in 'file' instead of '.pvars' -- path relative to $HOME
+    """
+    home = os.getenv('HOME')
+    set  = kwargs.get('set')
+    file = kwargs.get('file') or os.path.join(home, '.pvars.json')  # find pvar file
+    global pvar_caches
+    if not pvar_caches.get(file):                                   # Load relevant pvar file
+        if os.path.exists(file):
+            with open(file) as f:
+                string = f.read()
+                pvar_caches[file] = json.loads(string)
+        else:
+            pvar_caches[file] = {}
+    if name==None:                                                  # Return map of *ALL* pvars in that file
+        return pvar_caches[file]
+    elif 'set' in kwargs:                                           # Set new value for specified pvar
+        pvar_caches[file][name] = set
+        with open(file, 'w') as out:
+            json.dump(pvar_caches[file], out)
+    else:
+        return pvar_caches[file].get(name)                        
+          # Return value of single pvar
+pvar_caches = {}
+
+
+def find_files(directory, pattern='*'):
+    """Returns list of files matching 'pattern' under 'directory'"""
+    result = []
+    for root, dirs, files in os.walk(directory):
+        for basename in files:
+            if fnmatch.fnmatch(basename, pattern):
+                result.append(os.path.join(root, basename))
+    return result
+
+
+
+
+if __name__=='__main__':
+    main()
